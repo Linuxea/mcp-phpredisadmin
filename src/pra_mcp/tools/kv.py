@@ -27,7 +27,7 @@ def redis_set(
     score: str = "",
 ) -> str:
     """Create/overwrite a Redis key. type: string|hash|list|set|zset.
-    hash requires hkey; list requires index ('' append, -1 prepend, N overwrite); zset requires numeric score."""
+    hash requires hkey; zset requires numeric score. list index: N overwrites (N==len appends), -1 prepends on newer phpRedisAdmin; note an omitted/empty index currently writes nothing."""
     client = get_client()
     data: dict[str, str] = {"type": type, "key": key, "value": value}
     if hkey:

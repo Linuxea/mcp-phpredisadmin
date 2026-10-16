@@ -73,11 +73,24 @@ uv run pra-mcp
 - `redis_delete(key)` — 删 key
 - `redis_info()` — 服务器信息
 
-## 已知限制
+## 已知限制（2026-10 实测 @ redis.chathot.me，均有 live 测试固化）
 
-- 不支持 TTL 设置（phpRedisAdmin 页面本身能力有限）
-- zset 导出不带 score；list 只能追加/按索引覆写
-- `redis_export` 在 key 极多时会拉全量数据
+**假 OK —— 工具返回 OK 但实际未写入**（edit.php 对不满足分支条件的写入静默跳过，但仍渲染成功页）：
+
+- `redis_set(type="list")` 不传 `index`（工具默认值就是空，字段被省略）
+- `redis_set(type="hash")` 缺 `hkey`
+- `redis_set(type="zset")` 缺 `score`
+- `type` 传了非法值
+
+其他：
+
+- list `index=-1`：新版 phpRedisAdmin 文档为 prepend，这台老实例实测为 append
+- zset 导出不带 score（export.php 用 zRange）
+- `redis_delete` 删不存在的 key 同样返回 OK，无法区分
+- `redis_get` 不存在的 key 返回字面量 `null`
+- `redis_keys` 的 filter 在这台实例上是客户端子串过滤（服务端忽略 GET filter 参数）；glob（`xxx*`）会匹配不到任何 key；每次查询都拉全量 key 页面（数千 key 时页面很大）
+- `redis_export` 全量导出在数千 key 的实例上会超时（服务端 KEYS 全量扫描）
+- 不支持 TTL 设置（工具未暴露，phpRedisAdmin 页面本身能力有限）
 
 ## 项目结构
 
