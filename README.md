@@ -70,7 +70,8 @@ uv run pra-mcp
 - `redis_get(key)` — 读单个 key（自动识别类型，返回 JSON）
 - `redis_export(filter)` — 批量导出 key+值（**filter 必填**，最多 50 个 key；实现为 keys+逐 key 取值，不走服务端全量导出）
 - `redis_set(key, value, type, hkey?,, index?, score?)` — 写 key
-- `redis_delete(key)` — 删 key
+- `redis_delete(key, type?, hkey?, index?, value?)` — 删 key，或只删一部分（hash 字段 / list 元素 / set、zset 成员）
+- `redis_ttl(key, seconds)` — 设置 key 过期时间（秒），-1 移除过期
 - `redis_info()` — 服务器信息
 
 ## 已修复（2026-10-17，均有 live 测试固化）
@@ -89,7 +90,8 @@ uv run pra-mcp
 - `redis_delete` 删不存在的 key 同样返回 OK，无法区分
 - `redis_get` 不存在的 key 返回字面量 `null`
 - `redis_keys`/`redis_export` 的过滤在忽略服务端 filter 参数的实例上是纯客户端过滤（每次仍拉全量 key 页面，已有返回上限保护）
-- 不支持 TTL 设置（工具未暴露，phpRedisAdmin 页面本身能力有限）
+- **TTL 设置在老实例上不可用**：starchat 测试机的 Predis 过老，设置正数 TTL 会触发服务端 `SETTIMEOUT` Fatal error（工具返回 FAILED）；移除 TTL（-1）可用。较新的 phpRedisAdmin 不受影响
+- 不支持 TTL 的查看（未做，如需可后续从 view.php 解析）
 
 ## 项目结构
 

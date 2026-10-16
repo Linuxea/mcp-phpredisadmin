@@ -63,12 +63,58 @@ def redis_set(
 
 
 @mcp.tool()
-def redis_delete(key: str) -> str:
-    """Delete a Redis key."""
+def redis_delete(
+    key: str,
+    type: str = "",
+    hkey: str = "",
+    index: str = "",
+    value: str = "",
+) -> str:
+    """Delete a Redis key, or only part of it.
+    Whole key: leave type empty (or 'string'). Fine-grained: type='hash' + hkey
+    deletes one field, type='list' + index one element, type='set'/'zset' + value
+    one member."""
     client = get_client()
+    params: dict[str, str] = {}
+    if type and type != "string":
+        # Local validation: delete.php reports success even when the required
+        # member parameter is missing and nothing was deleted (verified live).
+        if type not in ("hash", "list", "set", "zset"):
+            return f"FAILED: unknown type '{type}' (expected hash, list, set or zset)"
+        if type == "hash" and not hkey:
+            return "FAILED: type hash requires hkey"
+        if type == "list" and index == "":
+            return "FAILED: type list requires index"
+        if type in ("set", "zset") and not value:
+            return f"FAILED: type {type} requires value"
+        params["type"] = type
+        if hkey:
+            params["hkey"] = hkey
+        if index != "":
+            params["index"] = index
+        if value:
+            params["value"] = value
     r = client.post(
-        "delete.php", params={**client.qs(), "key": key}, data={"post": "1"}
+        "delete.php", params={**client.qs(), "key": key, **params}, data={"post": "1"}
     )
-    return (
-        f"OK: '{key}' deleted" if "?view" in r.text else f"Response: {r.text[:200]}"
-    )
+    if "?view" not in r.text:
+        return f"Response: {r.text[:200]}"
+    if not type or type == "string":
+        return f"OK: '{key}' deleted"
+    what = params.get("hkey") or params.get("index") or params.get("value")
+    return f"OK: {type} entry '{what}' removed from '{key}'"
+
+
+@mcp.tool()
+def redis_ttl(key: str, seconds: int = -1) -> str:
+    """Set a key's TTL in seconds; -1 removes the TTL (persist).
+    Caveat: on very old phpRedisAdmin/Predis installs setting a positive TTL
+    fails server-side ('SETTIMEOUT' not supported) — you'll get FAILED there;
+    removing a TTL works everywhere."""
+    client = get_client()
+    r = client.post("ttl.php", data={"key": key, "ttl": str(seconds)})
+    if "Fatal error" in r.text or "exception" in r.text or "ERROR" in r.text:
+        return f"FAILED: {strip_html(r.text)[:300]}"
+    if "view.php" in r.url:  # ttl.php redirects to the key view on success
+        return f"OK: ttl of '{key}' set to {seconds}"
+    return f"Response: {strip_html(r.text)[:200]}"

@@ -350,6 +350,81 @@ class TestDelete:
         if listing.startswith("["):
             assert key not in json.loads(listing)
 
+    async def test_delete_hash_field_only(self, mcp_client):
+        key = NS("del_h")
+        await call(mcp_client, "redis_set", {"key": key, "value": "1", "type": "hash", "hkey": "keep"})
+        await call(mcp_client, "redis_set", {"key": key, "value": "2", "type": "hash", "hkey": "drop"})
+        r = await call(mcp_client, "redis_delete", {"key": key, "type": "hash", "hkey": "drop"})
+        assert r.startswith("OK:") and "drop" in r
+        assert await get_value(mcp_client, key) == {"keep": "1"}
+
+    async def test_delete_set_member_only(self, mcp_client):
+        key = NS("del_s")
+        await call(mcp_client, "redis_set", {"key": key, "value": "a", "type": "set"})
+        await call(mcp_client, "redis_set", {"key": key, "value": "b", "type": "set"})
+        r = await call(mcp_client, "redis_delete", {"key": key, "type": "set", "value": "a"})
+        assert r.startswith("OK:")
+        assert await get_value(mcp_client, key) == ["b"]
+
+    async def test_delete_zset_member_only(self, mcp_client):
+        key = NS("del_z")
+        await call(mcp_client, "redis_set", {"key": key, "value": "m1", "type": "zset", "score": "1"})
+        await call(mcp_client, "redis_set", {"key": key, "value": "m2", "type": "zset", "score": "2"})
+        r = await call(mcp_client, "redis_delete", {"key": key, "type": "zset", "value": "m1"})
+        assert r.startswith("OK:")
+        assert await get_value(mcp_client, key) == ["m2"]
+
+    async def test_delete_list_element_only(self, mcp_client):
+        """Upstream implements this as lSet(random)+lRem — verified working here."""
+        key = NS("del_l")
+        for v in ("x", "y", "z"):
+            await call(mcp_client, "redis_set", {"key": key, "value": v, "type": "list", "index": "-1"})
+        r = await call(mcp_client, "redis_delete", {"key": key, "type": "list", "index": "1"})
+        assert r.startswith("OK:")
+        assert await get_value(mcp_client, key) == ["x", "z"]
+
+    async def test_fine_grained_missing_params_rejected_locally(self, mcp_client):
+        """delete.php reports success even with nothing deleted (verified live);
+        the tool refuses these before hitting the server."""
+        key = NS("del_rej")
+        await call(mcp_client, "redis_set", {"key": key, "value": "1", "type": "hash", "hkey": "f"})
+        cases = [
+            {"type": "hash"},  # no hkey
+            {"type": "list"},  # no index
+            {"type": "set"},  # no value
+            {"type": "zset"},  # no value
+            {"type": "bogus"},
+        ]
+        for extra in cases:
+            r = await call(mcp_client, "redis_delete", {"key": key, **extra})
+            assert r.startswith("FAILED:"), extra
+        # nothing was deleted by the refused calls
+        assert await get_value(mcp_client, key) == {"f": "1"}
+
+
+# --------------------------------------------------------------------------
+# ttl
+# --------------------------------------------------------------------------
+class TestTtl:
+    async def test_ttl_persist_works(self, mcp_client):
+        """PERSIST travels a command path old Predis supports, so -1 works
+        even on this instance (verified live)."""
+        key = NS("ttl")
+        await call(mcp_client, "redis_set", {"key": key, "value": "x"})
+        r = await call(mcp_client, "redis_ttl", {"key": key, "seconds": -1})
+        assert r.startswith("OK:")
+
+    async def test_ttl_positive_fails_on_this_old_instance(self, mcp_client):
+        """PINNED: this phpRedisAdmin runs an old Predis that maps expire() to
+        the unsupported 'SETTIMEOUT' command — a positive TTL dies with a PHP
+        Fatal error. The tool surfaces that as FAILED instead of raw HTML.
+        On newer instances this test would legitimately fail."""
+        key = NS("ttl2")
+        await call(mcp_client, "redis_set", {"key": key, "value": "x"})
+        r = await call(mcp_client, "redis_ttl", {"key": key, "seconds": 120})
+        assert r.startswith("FAILED:")
+        assert "SETTIMEOUT" in r or "Fatal" in r
+
 
 # --------------------------------------------------------------------------
 # servers & switching
@@ -413,6 +488,7 @@ class TestToolSchemas:
             "redis_get",
             "redis_set",
             "redis_delete",
+            "redis_ttl",
             "redis_export",
             "redis_servers",
             "redis_use_server",
