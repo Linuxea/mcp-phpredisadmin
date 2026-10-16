@@ -307,18 +307,27 @@ class TestKeysFilter:
         listing = await call(mcp_client, "redis_keys", {"filter": "test:mid"})
         assert NS("mid:foo") in json.loads(listing)
 
-    async def test_keys_glob_filter_matches_nothing(self, mcp_client):
-        """KNOWN QUIRK: a glob like 'mcp:test:*' passes server-side untouched,
-        then fails the client-side substring check ('*' is not a substring)."""
+    async def test_keys_glob_filter_matches(self, mcp_client):
+        """FIXED (was a quirk): glob characters now activate fnmatch matching."""
         await call(mcp_client, "redis_set", {"key": NS("glob"), "value": "v"})
         listing = await call(mcp_client, "redis_keys", {"filter": "mcp:test:glob*"})
-        assert listing.startswith("no keys found")
+        assert NS("glob") in json.loads(listing)
 
-    async def test_keys_unfiltered_contains_existing_keys(self, mcp_client):
-        """No-filter listing returns the whole keyspace (4761+ keys here)."""
-        await call(mcp_client, "redis_set", {"key": NS("all"), "value": "v"})
-        listing = await call(mcp_client, "redis_keys", {})
-        assert NS("all") in json.loads(listing)
+    async def test_keys_glob_question_mark(self, mcp_client):
+        await call(mcp_client, "redis_set", {"key": NS("gq1"), "value": "v"})
+        await call(mcp_client, "redis_set", {"key": NS("gq2"), "value": "v"})
+        listing = await call(mcp_client, "redis_keys", {"filter": "mcp:test:gq?"})
+        assert {NS("gq1"), NS("gq2")} <= set(json.loads(listing))
+
+    async def test_keys_refuses_full_scan_patterns(self, mcp_client):
+        """Filterless listing = KEYS('*') server-side + context blowup; refused."""
+        for pattern in ("", "*", "**", "?*"):
+            r = await call(mcp_client, "redis_keys", {"filter": pattern})
+            assert r.startswith("refusing full-keyspace scan"), pattern
+
+    async def test_keys_missing_filter_is_a_schema_error(self, mcp_client):
+        result = await mcp_client.call_tool("redis_keys", {})
+        assert result.is_error
 
 
 # --------------------------------------------------------------------------
@@ -423,13 +432,38 @@ class TestToolSchemas:
 
 
 # --------------------------------------------------------------------------
-# export
+# export — bounded by design: filter required, <=50 keys, no server-side
+# full dump (rebuilt on keys() + per-key export calls, which stay fast)
 # --------------------------------------------------------------------------
 class TestExport:
-    async def test_full_export_times_out_on_large_keyspace(self, mcp_client):
-        """SKIPPED by design: verified manually on 2026-10-16 that export.php
-        runs KEYS('*') over the whole keyspace and does not answer within 30s
-        here (~5k keys). Do not run it from the suite; it hammers the Redis.
-        If a fix lands (paged export / SCAN), replace this with a real test."""
-        pytest.skip("full export times out on this instance; see docstring")
+    async def test_export_refuses_full_scan_patterns(self, mcp_client):
+        for pattern in ("", "*", "**"):
+            r = await call(mcp_client, "redis_export", {"filter": pattern})
+            assert r.startswith("refusing full-keyspace scan"), pattern
+
+    async def test_export_missing_filter_is_a_schema_error(self, mcp_client):
+        result = await mcp_client.call_tool("redis_export", {})
+        assert result.is_error
+
+    async def test_export_narrow_filter_roundtrip(self, mcp_client):
+        await call(mcp_client, "redis_set", {"key": NS("exp:a"), "value": "1"})
+        await call(mcp_client, "redis_set", {"key": NS("exp:b"), "value": "2"})
+        r = await call(mcp_client, "redis_export", {"filter": "mcp:test:exp:"})
+        data = json.loads(r)
+        assert data[NS("exp:a")] == "1"
+        assert data[NS("exp:b")] == "2"
+
+    async def test_export_no_match(self, mcp_client):
+        r = await call(mcp_client, "redis_export", {"filter": "zzz_mcp_no_such"})
+        assert r.startswith("no keys found")
+
+    async def test_export_cap_refuses_large_sets(self, mcp_client, monkeypatch):
+        import pra_mcp.tools.keys as keys_mod
+
+        monkeypatch.setattr(keys_mod, "MAX_EXPORTED_KEYS", 2)
+        for n in ("c1", "c2", "c3"):
+            await call(mcp_client, "redis_set", {"key": NS(f"cap:{n}"), "value": "v"})
+        r = await call(mcp_client, "redis_export", {"filter": "mcp:test:cap:"})
+        assert r.startswith("refusing export of 3 keys")
+        assert "max 2" in r
 

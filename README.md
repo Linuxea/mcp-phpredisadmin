@@ -66,9 +66,9 @@ uv run pra-mcp
 
 - `redis_servers()` — 列出 phpRedisAdmin 管理的所有 Redis 实例
 - `redis_use_server(s, db)` — 切换到指定实例/db
-- `redis_keys(filter)` — 列 key（不取值）
+- `redis_keys(filter)` — 列 key（**filter 必填**：子串或 glob 如 `user:*`；拒绝全库扫描，最多返回 200 个）
 - `redis_get(key)` — 读单个 key（自动识别类型，返回 JSON）
-- `redis_export(filter)` — 批量导出 key+值（重操作，慎用）
+- `redis_export(filter)` — 批量导出 key+值（**filter 必填**，最多 50 个 key；实现为 keys+逐 key 取值，不走服务端全量导出）
 - `redis_set(key, value, type, hkey?,, index?, score?)` — 写 key
 - `redis_delete(key)` — 删 key
 - `redis_info()` — 服务器信息
@@ -88,8 +88,7 @@ uv run pra-mcp
 - zset 导出不带 score（export.php 用 zRange）
 - `redis_delete` 删不存在的 key 同样返回 OK，无法区分
 - `redis_get` 不存在的 key 返回字面量 `null`
-- `redis_keys` 的 filter 在这台实例上是客户端子串过滤（服务端忽略 GET filter 参数）；glob（`xxx*`）会匹配不到任何 key；每次查询都拉全量 key 页面（数千 key 时页面很大）
-- `redis_export` 全量导出在数千 key 的实例上会超时（服务端 KEYS 全量扫描）
+- `redis_keys`/`redis_export` 的过滤在忽略服务端 filter 参数的实例上是纯客户端过滤（每次仍拉全量 key 页面，已有返回上限保护）
 - 不支持 TTL 设置（工具未暴露，phpRedisAdmin 页面本身能力有限）
 
 ## 项目结构
