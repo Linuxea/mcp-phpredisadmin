@@ -17,6 +17,9 @@ def redis_get(key: str) -> str:
     return r.text
 
 
+_VALID_TYPES = ("string", "hash", "list", "set", "zset")
+
+
 @mcp.tool()
 def redis_set(
     key: str,
@@ -27,12 +30,29 @@ def redis_set(
     score: str = "",
 ) -> str:
     """Create/overwrite a Redis key. type: string|hash|list|set|zset.
-    hash requires hkey; zset requires numeric score. list index: N overwrites (N==len appends), -1 prepends on newer phpRedisAdmin; note an omitted/empty index currently writes nothing."""
+    hash requires hkey; zset requires numeric score. list index: '' append,
+    N overwrite (N==len appends), -1 prepend on newer phpRedisAdmin (appends on older ones)."""
     client = get_client()
+    # Validate locally: edit.php silently skips writes whose branch conditions
+    # are not met but still renders its success page (verified live).
+    if type not in _VALID_TYPES:
+        return f"FAILED: unknown type '{type}' (expected one of: {', '.join(_VALID_TYPES)})"
+    if type == "hash" and not hkey:
+        return "FAILED: type hash requires hkey"
+    if type == "zset" and score == "":
+        return "FAILED: type zset requires score"
+    if type == "zset":
+        try:
+            float(score)
+        except ValueError:
+            return f"FAILED: zset score must be numeric, got {score!r}"
+
     data: dict[str, str] = {"type": type, "key": key, "value": value}
     if hkey:
         data["hkey"] = hkey
-    if index != "":
+    if type == "list":
+        # edit.php's list branch requires isset($_POST['index']); omitting the
+        # field (the old behaviour) turned every plain append into a silent no-op.
         data["index"] = index
     if score != "":
         data["score"] = score

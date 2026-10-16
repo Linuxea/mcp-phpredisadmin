@@ -73,14 +73,14 @@ uv run pra-mcp
 - `redis_delete(key)` — 删 key
 - `redis_info()` — 服务器信息
 
+## 已修复（2026-10-17，均有 live 测试固化）
+
+**假 OK 家族**——`redis_set` 现在在本地校验参数，不再让 edit.php 静默吞掉写入：
+
+- ~~`redis_set(type="list")` 不传 `index` 导致 append 静默丢失~~ → 现在总是显式携带 index 字段，默认 `""` 即追加
+- ~~`redis_set(type="hash")` 缺 `hkey` / `type="zset"` 缺 `score` / `type` 非法 → 返回 OK 但未写入~~ → 现在直接返回 `FAILED` 及原因
+
 ## 已知限制（2026-10 实测 @ redis.chathot.me，均有 live 测试固化）
-
-**假 OK —— 工具返回 OK 但实际未写入**（edit.php 对不满足分支条件的写入静默跳过，但仍渲染成功页）：
-
-- `redis_set(type="list")` 不传 `index`（工具默认值就是空，字段被省略）
-- `redis_set(type="hash")` 缺 `hkey`
-- `redis_set(type="zset")` 缺 `score`
-- `type` 传了非法值
 
 其他：
 

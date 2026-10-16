@@ -145,6 +145,13 @@ class TestHash:
         await call(mcp_client, "redis_set", {"key": NS("h_uni"), "value": "值", "type": "hash", "hkey": "字段"})
         assert await get_value(mcp_client, NS("h_uni")) == {"字段": "值"}
 
+    async def test_hash_without_hkey_is_rejected_locally(self, mcp_client):
+        """FIXED (was a fake OK): the tool validates before hitting the server."""
+        r = await call(mcp_client, "redis_set", {"key": NS("h_rej"), "value": "v", "type": "hash"})
+        assert r.startswith("FAILED:")
+        assert "hkey" in r
+        assert await call(mcp_client, "redis_get", {"key": NS("h_rej")}) == "null"
+
     async def test_hash_requires_hkey_to_have_any_effect(self, mcp_client):
         # Sanity anchor for the KNOWN ISSUE test below: with hkey it works.
         await call(mcp_client, "redis_set", {"key": NS("h_ok"), "value": "v", "type": "hash", "hkey": "f"})
@@ -155,6 +162,15 @@ class TestHash:
 # list
 # --------------------------------------------------------------------------
 class TestList:
+    async def test_append_with_default_index_now_writes(self, mcp_client):
+        """FIXED (was a silent no-op reporting OK): the tool now always sends
+        the index field for lists; edit.php treats an explicit '' as rPush."""
+        r = await call(mcp_client, "redis_set", {"key": NS("l_app"), "value": "a", "type": "list"})
+        assert r.startswith("OK:")
+        r = await call(mcp_client, "redis_set", {"key": NS("l_app"), "value": "b", "type": "list"})
+        assert r.startswith("OK:")
+        assert await get_value(mcp_client, NS("l_app")) == ["a", "b"]
+
     async def test_prepend_creates_list(self, mcp_client):
         await call(mcp_client, "redis_set", {"key": NS("l"), "value": "p", "type": "list", "index": "-1"})
         assert await get_value(mcp_client, NS("l")) == ["p"]
@@ -226,6 +242,13 @@ class TestZSet:
         await call(mcp_client, "redis_set", {"key": NS("z_ow"), "value": "n", "type": "zset", "score": "1"})
         assert await get_value(mcp_client, NS("z_ow")) == ["n", "m"]
 
+    async def test_zset_without_score_is_rejected_locally(self, mcp_client):
+        """FIXED (was a fake OK): the tool validates before hitting the server."""
+        r = await call(mcp_client, "redis_set", {"key": NS("z_rej"), "value": "m", "type": "zset"})
+        assert r.startswith("FAILED:")
+        assert "score" in r
+        assert await call(mcp_client, "redis_get", {"key": NS("z_rej")}) == "null"
+
     async def test_negative_and_float_scores(self, mcp_client):
         for member, score in (("neg", "-3.5"), ("zero", "0"), ("big", "100")):
             await call(mcp_client, "redis_set", {"key": NS("z_f"), "value": member, "type": "zset", "score": score})
@@ -233,42 +256,26 @@ class TestZSet:
 
 
 # --------------------------------------------------------------------------
-# KNOWN ISSUES — fake-OK family, verified live 2026-10-16.
-# These pin current behaviour on purpose; a fix should flip them
-# (and move the case into the regular classes above).
+# local validation (fixed 2026-10-17; was the fake-OK family)
+# --------------------------------------------------------------------------
+class TestValidation:
+    async def test_bogus_type_is_rejected_locally(self, mcp_client):
+        r = await call(mcp_client, "redis_set", {"key": NS("val_bogus"), "value": "x", "type": "bogus"})
+        assert r.startswith("FAILED:")
+        assert "unknown type" in r
+        assert await call(mcp_client, "redis_get", {"key": NS("val_bogus")}) == "null"
+
+    async def test_zset_non_numeric_score_is_rejected_locally(self, mcp_client):
+        r = await call(mcp_client, "redis_set", {"key": NS("val_zb"), "value": "m", "type": "zset", "score": "abc"})
+        assert r.startswith("FAILED:")
+        assert "numeric" in r
+        assert await call(mcp_client, "redis_get", {"key": NS("val_zb")}) == "null"
+
+
+# --------------------------------------------------------------------------
+# KNOWN ISSUES still open — pinned; fix should flip these deliberately.
 # --------------------------------------------------------------------------
 class TestKnownIssues:
-    async def test_bogus_type_reports_ok_writes_nothing(self, mcp_client):
-        """edit.php matches no branch for an unknown type but still renders the
-        success page, so the tool answers OK while nothing was written."""
-        r = await call(mcp_client, "redis_set", {"key": NS("ki_bogus"), "value": "x", "type": "bogus"})
-        assert r.startswith("OK:")
-        assert await call(mcp_client, "redis_get", {"key": NS("ki_bogus")}) == "null"
-
-    async def test_hash_without_hkey_reports_ok_writes_nothing(self, mcp_client):
-        r = await call(mcp_client, "redis_set", {"key": NS("ki_h"), "value": "v", "type": "hash"})
-        assert r.startswith("OK:")
-        assert await call(mcp_client, "redis_get", {"key": NS("ki_h")}) == "null"
-
-    async def test_zset_without_score_reports_ok_writes_nothing(self, mcp_client):
-        r = await call(mcp_client, "redis_set", {"key": NS("ki_z"), "value": "m", "type": "zset"})
-        assert r.startswith("OK:")
-        assert await call(mcp_client, "redis_get", {"key": NS("ki_z")}) == "null"
-
-    async def test_list_append_default_index_reports_ok_writes_nothing(self, mcp_client):
-        """Worst one for daily use: the tool omits the index field when it is ""
-        (the default), edit.php's list branch requires isset($_POST['index']),
-        so a plain append is a silent no-op that still reports OK."""
-        r = await call(mcp_client, "redis_set", {"key": NS("ki_l"), "value": "a", "type": "list"})
-        assert r.startswith("OK:")
-        assert await call(mcp_client, "redis_get", {"key": NS("ki_l")}) == "null"
-
-    async def test_zset_non_numeric_score_not_written(self, mcp_client):
-        r = await call(mcp_client, "redis_set", {"key": NS("ki_zb"), "value": "m", "type": "zset", "score": "abc"})
-        # response does not render the success page; tool reports FAILED
-        assert r.startswith("FAILED:")
-        assert await call(mcp_client, "redis_get", {"key": NS("ki_zb")}) == "null"
-
     async def test_delete_missing_key_still_reports_ok(self, mcp_client):
         r = await call(mcp_client, "redis_delete", {"key": NS("ki_ghost")})
         assert r.startswith("OK:")  # indistinguishable from a real deletion
