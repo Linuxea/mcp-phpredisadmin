@@ -17,8 +17,17 @@
 
 ## 安装
 
-无需手动安装依赖，脚本内嵌依赖声明（PEP 723），用 [uv](https://docs.astral.sh/uv/) 直接运行：
-`uv run phpredisadmin_mcp.py`
+标准 uv 项目布局，首次 clone 后安装依赖：
+
+```bash
+uv sync
+```
+
+运行（等价入口：`uv run pra-mcp` 或 `uv run python -m pra_mcp`）：
+
+```bash
+uv run pra-mcp
+```
 
 ## 配置（opencode）
 
@@ -29,7 +38,7 @@
   "mcp": {
     "phpredisadmin": {
       "type": "local",
-      "command": ["uv", "run", "/path/to/mcp-phpredisadmin/phpredisadmin_mcp.py"],
+      "command": ["uv", "run", "--project", "/path/to/mcp-phpredisadmin", "pra-mcp"],
       "environment": {
         "PRA_URL": "https://pra.example.com",
         "PRA_USER": "yourname",
@@ -69,3 +78,37 @@
 - 不支持 TTL 设置（phpRedisAdmin 页面本身能力有限）
 - zset 导出不带 score；list 只能追加/按索引覆写
 - `redis_export` 在 key 极多时会拉全量数据
+
+## 项目结构
+
+```
+src/pra_mcp/
+├── config.py       # 环境变量 → Config
+├── registry.py     # MCPServer 实例（装配锚点）
+├── http_client.py  # phpRedisAdmin HTTP 会话/登录/CSRF/当前 server+db
+├── parsing.py      # 纯 HTML 解析函数（无 IO，可独立单测）
+└── tools/          # 每组工具一个模块
+    ├── keys.py     # redis_keys / redis_export
+    ├── kv.py       # redis_get / redis_set / redis_delete
+    └── cluster.py  # redis_info / redis_servers / redis_use_server
+tests/
+├── test_parsing.py     # 纯函数单测，离线可跑
+└── test_tools_live.py  # 真实 phpRedisAdmin 集成测试（见下）
+```
+
+## 测试
+
+离线单测（解析函数、工具注册）：
+
+```bash
+uv run pytest
+```
+
+连真实 phpRedisAdmin 的集成测试（默认 skip，显式开启；`PRA_LIVE` 开关防止误打到生产）：
+
+```bash
+PRA_LIVE=1 PRA_URL=https://pra.example.com PRA_USER=... PRA_PASS=... \
+    uv run pytest tests/test_tools_live.py
+```
+
+集成测试使用 MCP SDK 的 in-memory client（`Client(mcp)`）直连 server 对象，不起子进程、不开端口；只做安全操作（info/keys/读写自建 key），不涉及 flush 等危险命令。
