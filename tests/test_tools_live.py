@@ -51,7 +51,7 @@ async def get_value(mcp_client, key: str):
 @pytest.fixture(autouse=True)
 def _isolate():
     """Drop the shared client around each test so a failed server switch
-    cannot leak s=/db= state into the next case (cheap: one extra GET)."""
+    cannot leak s= state into the next case (cheap: one extra GET)."""
     from pra_mcp.http_client import reset_client
 
     reset_client()
@@ -437,7 +437,8 @@ class TestServers:
         listing = await call(mcp_client, "redis_servers", {})
         if "no server selector found" in listing:
             listing = await call(mcp_client, "redis_servers", {})
-        # this instance exposes 16 servers; starchat is s=0, gama is s=8
+        # one Redis process behind all 16 entries (dbs pinned server-side);
+        # starchat is s=0, gama is s=8
         assert "starchat" in listing, f"listing was: {listing[:200]}"
         assert "gama" in listing, f"listing was: {listing[:200]}"
         assert "<- current" in listing, f"listing was: {listing[:200]}"

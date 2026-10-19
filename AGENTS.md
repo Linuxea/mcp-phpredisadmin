@@ -1,6 +1,6 @@
 # AGENTS.md
 
-MCP server (stdio) that operates Redis through a phpRedisAdmin web UI — it scrapes HTML pages, not a Redis protocol connection. Tested against an old phpRedisAdmin at `http://redis.chathot.me` (16 Redis instances, no login).
+MCP server (stdio) that operates Redis through a phpRedisAdmin web UI — it scrapes HTML pages, not a Redis protocol connection. Tested against an old phpRedisAdmin at `http://redis.chathot.me` (16 selector entries, no login — all 16 entries point to **one** Redis process, each pinned to a different db; see quirks below).
 
 ## Commands
 
@@ -35,8 +35,9 @@ Live tests are opt-in via **two** env vars (`PRA_LIVE` + `PRA_URL`) so a product
 - list `index=-1` is **append** on this old instance (upstream master documents prepend).
 - Positive TTLs die server-side (`Predis SETTIMEOUT` Fatal error on this instance); `redis_ttl(-1)` persist works. The PHP Fatal error must surface as `FAILED`, never raw HTML.
 - The instance ignores the GET `filter` param — all key filtering is client-side (`_matches`: glob chars → fnmatch, else substring). `ttl.php` needs `key` in the POST body, not the query string.
+- The instance also ignores the GET `d` (db) param: every `s=` entry is pinned to the db configured in phpRedisAdmin's server list. Verified 2026-10-19 via process fingerprints (info.php: same `process_id`/`run_id`/port 2722 for all 16 entries) — one Redis process, entries map s→db as: s0→db0 starchat, s1→db1 starchat_rank, s2→db5 video_chat, s3→db2 starchat_lite, s4→db4 waga, s5→db6 farah, s6→db7 salam-ai, s7→db8 kalam, s8→db9 gama, s9→db11 najmat, s10→db12 sawtik, s11→db13 drama, s12→db14 reelstar, s13→db15 mela, s14→db16 T_project, s15→db17 tawla (db10/db18 exist but have no entry). `PRA_DB`, the client's db state, and `redis_use_server`'s db param were therefore **removed** (2026-10-19); `qs()` no longer sends `d`. Pick the right `s` instead.
 
 ## Ops notes
 
-- opencode entry: `["uv", "run", "--project", "<repo>", "pra-mcp"]` with env `PRA_URL`, `PRA_SERVER_ID`, `PRA_DB`. There is no auth on the test instance; `PRA_LOGIN=form` flow exists but is untested live.
+- opencode entry: `["uv", "run", "--project", "<repo>", "pra-mcp"]` with env `PRA_URL`, `PRA_SERVER_ID`. There is no auth on the test instance; `PRA_LOGIN=form` flow exists but is untested live.
 - README carries the user-facing tool list and known-limitation table — update it together with tool behaviour changes.

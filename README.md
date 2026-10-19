@@ -44,8 +44,7 @@ uv run pra-mcp
         "PRA_USER": "yourname",
         "PRA_PASS": "yourpass",
         "PRA_LOGIN": "basic",
-        "PRA_SERVER_ID": "0",
-        "PRA_DB": "0"
+        "PRA_SERVER_ID": "0"
       }
     }
   }
@@ -60,12 +59,13 @@ uv run pra-mcp
 | `PRA_USER` / `PRA_PASS` | 登录凭据 |
 | `PRA_LOGIN` | `basic`（默认，HTTP Basic 或无登录）或 `form`（login.php 表单） |
 | `PRA_SERVER_ID` | phpRedisAdmin 配置里的服务器编号，默认 0 |
-| `PRA_DB` | Redis db 编号，默认 0 |
+
+> 没有 `PRA_DB`：实测（2026-10-19）目标实例忽略 `d` 参数，每个 `s=` 条目的 db 由 phpRedisAdmin 服务端配置固定（16 个条目实为同一进程的 16 个 db），客户端传 db 无效，故已移除。
 
 ## 提供的工具
 
 - `redis_servers()` — 列出 phpRedisAdmin 管理的所有 Redis 实例
-- `redis_use_server(s, db)` — 切换到指定实例/db
+- `redis_use_server(s)` — 切换到指定实例（各实例对应的 db 由服务端配置固定）
 - `redis_keys(filter)` — 列 key（**filter 必填**：子串或 glob 如 `user:*`；拒绝全库扫描，最多返回 200 个）
 - `redis_get(key)` — 读单个 key（自动识别类型，返回 JSON）
 - `redis_export(filter)` — 批量导出 key+值（**filter 必填**，最多 50 个 key；实现为 keys+逐 key 取值，不走服务端全量导出）
@@ -90,6 +90,7 @@ uv run pra-mcp
 - `redis_delete` 删不存在的 key 同样返回 OK，无法区分
 - `redis_get` 不存在的 key 返回字面量 `null`
 - `redis_keys`/`redis_export` 的过滤在忽略服务端 filter 参数的实例上是纯客户端过滤（每次仍拉全量 key 页面，已有返回上限保护）
+- 该实例忽略 `d`（db）参数：每个 `s=` 条目的 db 固定在 phpRedisAdmin 服务端配置（16 条目 = 同一进程的 16 个 db），`PRA_DB` 与 `redis_use_server` 的 db 参数已移除，切库请切 `s`
 - **TTL 设置在老实例上不可用**：starchat 测试机的 Predis 过老，设置正数 TTL 会触发服务端 `SETTIMEOUT` Fatal error（工具返回 FAILED）；移除 TTL（-1）可用。较新的 phpRedisAdmin 不受影响
 - 不支持 TTL 的查看（未做，如需可后续从 view.php 解析）
 
@@ -99,7 +100,7 @@ uv run pra-mcp
 src/pra_mcp/
 ├── config.py       # 环境变量 → Config
 ├── registry.py     # MCPServer 实例（装配锚点）
-├── http_client.py  # phpRedisAdmin HTTP 会话/登录/CSRF/当前 server+db
+├── http_client.py  # phpRedisAdmin HTTP 会话/登录/CSRF/当前 server
 ├── parsing.py      # 纯 HTML 解析函数（无 IO，可独立单测）
 └── tools/          # 每组工具一个模块
     ├── keys.py     # redis_keys / redis_export

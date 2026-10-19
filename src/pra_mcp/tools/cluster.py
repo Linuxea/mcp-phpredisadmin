@@ -1,4 +1,4 @@
-"""Server-info and server/db switching tools."""
+"""Server-info and server-switching tools."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ def redis_info() -> str:
 def redis_servers() -> str:
     """List all Redis servers configured in phpRedisAdmin, marking the current one."""
     client = get_client()
-    r = client.get("index.php", params={"s": client.server_id, "d": client.db}, timeout=30)
+    r = client.get("index.php", params=client.qs(), timeout=30)
     r.raise_for_status()
     select = find_server_select(r.text)
     if not select:
@@ -36,11 +36,15 @@ def redis_servers() -> str:
 
 
 @mcp.tool()
-def redis_use_server(s: int, db: int = 0) -> str:
-    """Switch all subsequent operations to another Redis server (id from redis_servers) and optional db."""
+def redis_use_server(s: int) -> str:
+    """Switch all subsequent operations to another Redis server (id from redis_servers).
+
+    Note: the db each server id maps to is fixed in phpRedisAdmin's server-side
+    config; there is deliberately no db parameter.
+    """
     client = get_client()
     sid = str(s)
-    r = client.get("index.php", params={"s": sid, "d": db}, timeout=30)
+    r = client.get("index.php", params={"s": sid}, timeout=30)
     r.raise_for_status()
     select = find_server_select(r.text)
     name = sid
@@ -51,5 +55,5 @@ def redis_use_server(s: int, db: int = 0) -> str:
                 name = opt.name
     if "Can't connect to this server" in r.text:
         dead = "  [WARNING: can't connect to this server]"
-    client.server_id, client.db = sid, str(db)
-    return f"switched to s={sid} (db={db}) '{name}'{dead}"
+    client.server_id = sid
+    return f"switched to s={sid} '{name}'{dead}"

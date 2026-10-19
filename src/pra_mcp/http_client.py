@@ -1,7 +1,7 @@
 """HTTP client for the phpRedisAdmin web UI.
 
 Owns the requests session, auth, the csrf token, and the current
-server/db selection. Previously these were module-level globals; they
+server selection. Previously these were module-level globals; they
 live on the class now so tests can instantiate their own client.
 """
 
@@ -22,12 +22,13 @@ class PraClient:
         self.session.headers["User-Agent"] = "mcp-phpredisadmin/1.0"
         self._csrf: str | None = None
         self.server_id = cfg.server_id
-        self.db = cfg.db
 
     # -- request helpers -------------------------------------------------
 
     def qs(self) -> dict[str, str]:
-        return {"s": self.server_id, "d": self.db}
+        # no "d" (db) param: this phpRedisAdmin pins each s= entry to the db
+        # configured server-side and ignores d entirely (verified live)
+        return {"s": self.server_id}
 
     def get(self, path: str, params: dict | None = None, timeout: int = 30):
         return self.session.get(

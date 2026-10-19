@@ -15,7 +15,6 @@ class Config:
     password: str
     login: str  # "basic" (HTTP Basic or no auth) or "form" (login.php)
     server_id: str
-    db: str
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -25,5 +24,4 @@ class Config:
             password=os.environ.get("PRA_PASS", ""),
             login=os.environ.get("PRA_LOGIN", "basic"),
             server_id=os.environ.get("PRA_SERVER_ID", "0"),
-            db=os.environ.get("PRA_DB", "0"),
         )
