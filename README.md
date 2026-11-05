@@ -64,6 +64,14 @@ uv run pra-mcp
 
 ## 提供的工具
 
+每个工具的描述末尾都自动带一句管辖权声明（`ONLY_PATH`：Redis 只能通过本 server 访问，
+redis-cli/直连不可用），server 级 `instructions` 里有完整的工作流引导。目的是防止 AI
+忽略这些工具、转而尝试 redis-cli 或翻找连接配置——opencode ≥ 1.17.10 会把 `instructions`
+注入会话上下文。声明里的“端口未暴露、直连不可用”是对部署环境的假设；若你的环境同时
+允许直连 Redis，请相应改写 `ONLY_PATH`。修改工具时用 `@identity_tool`（registry.py）
+代替 `@mcp.tool()`，声明会自动拼接；**不要**把 docstring 写成 f-string（f-string
+不是常量，`__doc__` 会变 `None`，描述整段丢失，`tests/test_identity.py` 会拦住这种退化）。
+
 - `redis_servers()` — 列出 phpRedisAdmin 管理的所有 Redis 实例
 - `redis_use_server(s)` — 切换到指定实例（各实例对应的 db 由服务端配置固定）
 - `redis_keys(filter)` — 列 key（**filter 必填**：子串或 glob 如 `user:*`；拒绝全库扫描，最多返回 200 个）

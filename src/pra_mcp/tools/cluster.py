@@ -4,21 +4,27 @@ from __future__ import annotations
 
 from ..http_client import get_client
 from ..parsing import find_server_select, parse_server_options, strip_html
-from ..registry import mcp
+from ..registry import identity_tool
 
 
-@mcp.tool()
+@identity_tool
 def redis_info() -> str:
-    """Redis server info (version, memory, clients, keyspace) via phpRedisAdmin."""
+    """Redis server info (version, memory, clients, keyspace).
+
+    Start here to check Redis health or figure out which db to use.
+    """
     client = get_client()
     r = client.get("info.php", timeout=30)
     r.raise_for_status()
     return strip_html(r.text)[:4000]
 
 
-@mcp.tool()
+@identity_tool
 def redis_servers() -> str:
-    """List all Redis servers configured in phpRedisAdmin, marking the current one."""
+    """List all Redis servers/dbs configured in phpRedisAdmin, marking the current one.
+
+    Call this first when unsure which db a key lives in.
+    """
     client = get_client()
     r = client.get("index.php", params=client.qs(), timeout=30)
     r.raise_for_status()
@@ -35,7 +41,7 @@ def redis_servers() -> str:
     return "\n".join(out)
 
 
-@mcp.tool()
+@identity_tool
 def redis_use_server(s: int) -> str:
     """Switch all subsequent operations to another Redis server (id from redis_servers).
 

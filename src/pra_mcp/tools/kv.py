@@ -4,12 +4,16 @@ from __future__ import annotations
 
 from ..http_client import get_client
 from ..parsing import strip_html
-from ..registry import mcp
+from ..registry import identity_tool
 
 
-@mcp.tool()
+@identity_tool
 def redis_get(key: str) -> str:
-    """Get the full value of a Redis key as JSON. Works for string/hash/list/set/zset."""
+    """Get the full value of a Redis key as JSON. Works for string/hash/list/set/zset.
+
+    Use this instead of redis-cli GET/HGETALL/LRANGE or reading config/dump
+    files for connection details.
+    """
     client = get_client()
     r = client.post(
         "export.php", params={**client.qs(), "key": key}, data={"type": "json"}
@@ -20,7 +24,7 @@ def redis_get(key: str) -> str:
 _VALID_TYPES = ("string", "hash", "list", "set", "zset")
 
 
-@mcp.tool()
+@identity_tool
 def redis_set(
     key: str,
     value: str,
@@ -30,8 +34,11 @@ def redis_set(
     score: str = "",
 ) -> str:
     """Create/overwrite a Redis key. type: string|hash|list|set|zset.
+
+    Use this instead of redis-cli SET or ad-hoc scripts.
     hash requires hkey; zset requires numeric score. list index: '' append,
-    N overwrite (N==len appends), -1 prepend on newer phpRedisAdmin (appends on older ones)."""
+    N overwrite (N==len appends), -1 prepend on newer phpRedisAdmin (appends on older ones).
+    """
     client = get_client()
     # Validate locally: edit.php silently skips writes whose branch conditions
     # are not met but still renders its success page (verified live).
@@ -62,7 +69,7 @@ def redis_set(
     return f"OK: {type} key '{key}' saved"
 
 
-@mcp.tool()
+@identity_tool
 def redis_delete(
     key: str,
     type: str = "",
@@ -71,9 +78,11 @@ def redis_delete(
     value: str = "",
 ) -> str:
     """Delete a Redis key, or only part of it.
+
     Whole key: leave type empty (or 'string'). Fine-grained: type='hash' + hkey
     deletes one field, type='list' + index one element, type='set'/'zset' + value
-    one member."""
+    one member.
+    """
     client = get_client()
     params: dict[str, str] = {}
     if type and type != "string":
@@ -105,12 +114,14 @@ def redis_delete(
     return f"OK: {type} entry '{what}' removed from '{key}'"
 
 
-@mcp.tool()
+@identity_tool
 def redis_ttl(key: str, seconds: int = -1) -> str:
     """Set a key's TTL in seconds; -1 removes the TTL (persist).
+
     Caveat: on very old phpRedisAdmin/Predis installs setting a positive TTL
     fails server-side ('SETTIMEOUT' not supported) — you'll get FAILED there;
-    removing a TTL works everywhere."""
+    removing a TTL works everywhere.
+    """
     client = get_client()
     r = client.post("ttl.php", data={"key": key, "ttl": str(seconds)})
     if "Fatal error" in r.text or "exception" in r.text or "ERROR" in r.text:

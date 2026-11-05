@@ -16,7 +16,7 @@ Live tests are opt-in via **two** env vars (`PRA_LIVE` + `PRA_URL`) so a product
 
 ## Architecture
 
-- `src/pra_mcp/registry.py` holds the single `MCPServer` instance; tool modules under `tools/` import `mcp` from it and decorate — **importing a tools module is what registers its tools** (wired in `tools/__init__.py` and `__init__.py`).
+- `src/pra_mcp/registry.py` holds the single `MCPServer` instance; tool modules under `tools/` import `mcp` from it and decorate — **importing a tools module is what registers its tools** (wired in `tools/__init__.py` and `__init__.py`). registry.py also owns the server's *identity*: `instructions` (surfaced by opencode ≥ 1.17.10 into session context), and `identity_tool` / `ONLY_PATH` which append the "only Redis access path" jurisdiction claim to every tool docstring. Tools must use `@identity_tool`, never `@mcp.tool()` directly, and docstrings must stay plain literals — an f-string docstring leaves `__doc__` None and blanks the description (`tests/test_identity.py` pins this).
 - `http_client.py` owns the requests session, auth/CSRF, and current server/db as **instance state** (`get_client()` lazy singleton, `reset_client()` for tests). No module-level mutable globals.
 - `parsing.py` is pure functions over HTML fixture strings — extend it rather than putting regexes in tools.
 - MCP Python SDK is **v2**: `from mcp.server import MCPServer` (v1's `fastmcp.FastMCP` import is gone). In tests, `Client(mcp)` connects in memory; `list_tools()` returns a `ListToolsResult` — the tools are on `.tools`.

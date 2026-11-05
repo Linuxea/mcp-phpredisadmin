@@ -23,3 +23,14 @@ async def mcp_client():
 
     async with Client(mcp, raise_exceptions=True) as c:
         yield c
+
+
+@pytest.fixture
+def server_session(mcp_client):
+    """The initialize-result session: server_info / instructions / capabilities.
+
+    SDK v2's high-level ``Client`` exposes no public accessor for it, so the
+    private ``_session`` attribute is funneled through this one fixture — when
+    an SDK 2.x rename breaks it, fix here first.
+    """
+    return mcp_client._session

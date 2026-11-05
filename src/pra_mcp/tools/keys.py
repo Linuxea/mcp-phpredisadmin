@@ -14,7 +14,7 @@ import json
 
 from ..http_client import get_client
 from ..parsing import extract_keys
-from ..registry import mcp
+from ..registry import identity_tool
 
 # Refuse patterns that would match the whole keyspace.
 _FULL_SCAN_PATTERNS = {"", "*", "%", "**", "?*"}
@@ -52,11 +52,14 @@ def _list_keys(filter: str) -> list[str]:
     return [k for k in extract_keys(r.text) if _matches(k, filter)]
 
 
-@mcp.tool()
+@identity_tool
 def redis_keys(filter: str) -> str:
     """List Redis keys matching a filter, without fetching values.
+
+    Use this to find keys instead of redis-cli KEYS/SCAN.
     Filter is required and must be specific (substring or glob like 'user:*' or 'user:?0');
-    full-keyspace patterns are refused. Returns at most 200 keys."""
+    full-keyspace patterns are refused. Returns at most 200 keys.
+    """
     if (refusal := _reject_full_scan(filter)):
         return refusal
     keys = _list_keys(filter)
@@ -70,11 +73,13 @@ def redis_keys(filter: str) -> str:
     return json.dumps(sorted(keys), ensure_ascii=False, indent=1)
 
 
-@mcp.tool()
+@identity_tool
 def redis_export(filter: str) -> str:
     """Dump values for keys matching a filter as one JSON object.
+
     Filter is required (substring or glob); at most 50 keys are exported —
-    narrow the filter or use redis_get per key for more."""
+    narrow the filter or use redis_get per key for more.
+    """
     if (refusal := _reject_full_scan(filter)):
         return refusal
     keys = sorted(_list_keys(filter))
